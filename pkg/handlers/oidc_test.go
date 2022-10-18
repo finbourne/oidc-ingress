@@ -355,6 +355,7 @@ func TestCallbackOKRedirects(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, 302, resp.StatusCode)
+	assert.True(t, strings.Contains(resp.Header["Set-Cookie"][0], "SameSite=Strict"))
 	assert.Equal(t, 1, len(resp.Cookies()))
 	location, _ := resp.Location()
 	assert.Equal(t, "https://horton.hoo.com", location.String())
