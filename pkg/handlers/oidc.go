@@ -402,10 +402,11 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cookie := http.Cookie{
-		Name:   config.Name,
-		Path:   "/",
-		Domain: config.CookieDomain,
-		Value:  encoded,
+		Name:     config.Name,
++               Path:     "/",
++               Domain:   config.CookieDomain,
++               Value:    encoded,
++               SameSite: 3,
 	}
 	http.SetCookie(w, &cookie)
 	o.logger.WithFields(logrus.Fields{
