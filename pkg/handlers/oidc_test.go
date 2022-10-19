@@ -354,9 +354,9 @@ func TestCallbackOKRedirects(t *testing.T) {
 	resp := rr.Result()
 	defer resp.Body.Close()
 
-	assert.Equal(t, 302, resp.StatusCode)
+	assert.Equal(t, 200, resp.StatusCode)
 	assert.True(t, strings.Contains(resp.Header["Set-Cookie"][0], "SameSite=Strict"))
 	assert.Equal(t, 1, len(resp.Cookies()))
-	location, _ := resp.Location()
-	assert.Equal(t, "https://horton.hoo.com", location.String())
+	assert.Equal(t, rr.Body.String(), "\n<html xmlns=\"http://www.w3.org/1999/xhtml\">    \n<head>      \n<title>Redirecting</title>      \n<meta http-equiv=\"refresh\" content=\"0;URL='https://horton.hoo.com'\" />    \n</head>    \n<body> \n<p>Redirecting...</p> \n</body>  \n</html>\"")
+
 }
