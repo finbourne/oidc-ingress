@@ -54,7 +54,7 @@ const clientSideRedirectPage = `
 <body> 
 <p>Redirecting...</p> 
 </body>  
-</html>"`
+</html>`
 
 // NewOidcHandler creates a new object for handling all oidc authorisation requests.
 func NewOidcHandler(config string, externalURL string, stateStorer StateStorer, logger *logrus.Logger) (*Oidc, error) {
