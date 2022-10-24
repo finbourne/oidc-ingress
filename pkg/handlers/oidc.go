@@ -417,6 +417,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
                 Domain:   config.CookieDomain,
                 Value:    encoded,
                 SameSite: 3,
+				Secure:   true,
 	}
 	http.SetCookie(w, &cookie)
 	o.logger.WithFields(logrus.Fields{
