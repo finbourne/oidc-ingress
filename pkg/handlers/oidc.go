@@ -45,6 +45,16 @@ type StateStorer interface {
 }
 
 const cookieName = "jwt"
+const clientSideRedirectPage = `
+<html xmlns="http://www.w3.org/1999/xhtml">    
+<head>      
+<title>Redirecting</title>      
+<meta http-equiv="refresh" content="0;URL='%v'" />    
+</head>    
+<body> 
+<p>Redirecting...</p> 
+</body>  
+</html>`
 
 // NewOidcHandler creates a new object for handling all oidc authorisation requests.
 func NewOidcHandler(config string, externalURL string, stateStorer StateStorer, logger *logrus.Logger) (*Oidc, error) {
@@ -407,6 +417,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
                 Domain:   config.CookieDomain,
                 Value:    encoded,
                 SameSite: 3,
+				Secure:   true,
 	}
 	http.SetCookie(w, &cookie)
 	o.logger.WithFields(logrus.Fields{
@@ -415,10 +426,10 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		"cookie":  cookie,
 	}).Debug("Cookie set - redirecting back to application.")
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if r.URL.Query().Get("rd") != "" {
-		http.Redirect(w, r, r.URL.Query().Get("rd"), http.StatusFound)
+		fmt.Fprintf(w, clientSideRedirectPage, r.URL.Query().Get("rd"))
 		return
 	}
-	http.Redirect(w, r, redirectURL, http.StatusFound)
-	return
+	fmt.Fprintf(w, clientSideRedirectPage, redirectURL)
 }
