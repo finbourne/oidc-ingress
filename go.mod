@@ -3,7 +3,7 @@ module github.com/finbourne/oidc-ingress
 go 1.15
 
 require (
-	github.com/alicebob/miniredis/v2 v2.13.3
+	github.com/alicebob/miniredis/v2 v2.23.0
 	github.com/coreos/go-oidc v2.0.0+incompatible
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ghodss/yaml v1.0.0
