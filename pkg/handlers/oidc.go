@@ -416,7 +416,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
                 Path:     "/",
                 Domain:   config.CookieDomain,
                 Value:    encoded,
-                SameSite: 3,
+                SameSite: 2,
 				Secure:   true,
 	}
 	http.SetCookie(w, &cookie)
