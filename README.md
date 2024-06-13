@@ -1,3 +1,5 @@
+![LUSID_by_Finbourne](./resources/Finbourne_Logo_Teal.svg)
+
 # oidc-ingress
 
 A webhook authentication service using OIDC and cookies
