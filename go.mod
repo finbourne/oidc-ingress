@@ -10,7 +10,7 @@ require (
 	github.com/go-chi/chi v3.3.2+incompatible
 	github.com/go-chi/render v1.0.1
 	github.com/go-chi/valve v0.0.0-20170920024740-9e45288364f4
-	github.com/go-redis/redis/v7 v7.4.0
+	github.com/go-redis/redis/v7 v7.4.1
 	github.com/gorilla/securecookie v1.1.1
 	github.com/namsral/flag v1.7.4-pre
 	github.com/pkg/errors v0.9.1
