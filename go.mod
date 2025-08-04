@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/alicebob/miniredis/v2 v2.13.3
-	github.com/coreos/go-oidc v2.0.0+incompatible
+	github.com/coreos/go-oidc v2.4.0+incompatible
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-chi/chi v3.3.2+incompatible
@@ -21,6 +21,6 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
-	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
+	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
