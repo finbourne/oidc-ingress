@@ -429,3 +429,78 @@ func TestSigninDynamicCallbackFallsBackToHTTP(t *testing.T) {
 	// Since scheme is http and no forwarded headers/TLS, expect http callback
 	assert.True(t, strings.HasPrefix(redirectURI, "http://bar.hoo.com/auth/callback"), redirectURI)
 }
+
+// deriveCookieDomain tests
+func TestDeriveCookieDomain(t *testing.T) {
+	// Helper to build request with optional forwarded host
+	newReq := func(host string, fwd string) *http.Request {
+		r, _ := http.NewRequest("GET", "https://"+host+"/", nil)
+		if fwd != "" {
+			r.Header.Set("X-Forwarded-Host", fwd)
+		}
+		return r
+	}
+	tests := []struct {
+		name         string
+		configDomain string
+		host         string
+		fwdHost      string
+		expect       string
+	}{
+		{"uses configured domain verbatim", "parent.example.com", "foo.bar.example.com", "", "parent.example.com"},
+		{"drops first label when >=3 labels", "", "foo.bar.example.com", "", "bar.example.com"},
+		{"keeps two-label host", "", "example.com", "", "example.com"},
+		{"uses forwarded host", "", "internal:8080", "a.b.c.example.com", "b.c.example.com"},
+		{"strips port before processing", "", "foo.bar.example.com:8443", "", "bar.example.com"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := deriveCookieDomain(tc.configDomain, newReq(tc.host, tc.fwdHost))
+			assert.Equal(t, tc.expect, got)
+		})
+	}
+}
+
+// Ensure CallbackHandler uses derived cookie domain when none configured
+func TestCallbackSetsDerivedCookieDomain(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+
+	// Build Oidc instance manually so we can leave CookieDomain empty
+	logger := logrus.New()
+	providers := map[string]*oidc.Provider{"test": {}}
+	clients := map[string]*OidcClient{
+		"test": {
+			Name:             "test",
+			Provider:         providers["test"],
+			ClientID:         "finbourne.com",
+			ClientSecret:     "big_secret",
+			AllowedRedirects: []string{"https://.*.example.com"},
+			Scopes:           []string{"openid"},
+			CookieDomain:     "", // Force derivation
+			CookieSecret:     "big_super_secret_key",
+			logger:           logger,
+		},
+	}
+	o := &Oidc{clients: clients, stateStorer: NewRedisStateStorer(mr.Addr(), logger), logger: logger}
+
+	// Prepare state pointing back somewhere valid
+	mr.Set("/oidc/abcde", "test|https://app.env.example.com")
+
+	// Stub token exchange & verification
+	getOAuth2Token = func(url string, r *http.Request, config *OidcClient) (*oauth2.Token, error) { return nil, nil }
+	getIDToken = func(o *oauth2.Token) string { return createJwtToken("") }
+	verify = func(token string, c OidcClient) error { return nil }
+
+	req, _ := http.NewRequest("GET", "https://foo.env.example.com/auth/callback?state=abcde&code=XYZ", nil)
+	rr := httptest.NewRecorder()
+	o.CallbackHandler(rr, req)
+	resp := rr.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, 200, resp.StatusCode)
+	// Expect cookie domain to drop first label (foo.env.example.com -> env.example.com)
+	cookies := resp.Cookies()
+	if assert.Equal(t, 1, len(cookies)) {
+		assert.Equal(t, "env.example.com", cookies[0].Domain)
+	}
+}
