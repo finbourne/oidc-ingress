@@ -209,20 +209,23 @@ func (o Oidc) baseURL(r *http.Request) string {
 //
 // This avoids perpetual redirects when a cookie set on one subdomain is not sent to another.
 func deriveCookieDomain(configDomain string, r *http.Request) string {
-	if configDomain != "" { // Explicitly configured (could already be a parent domain)
-		return configDomain
-	}
 	host := r.Header.Get("X-Forwarded-Host")
 	if host == "" {
 		host = r.Host
 	} else {
 		host = strings.TrimSpace(strings.Split(host, ",")[0])
 	}
-	// Strip port if present
 	host = strings.Split(host, ":")[0]
 	parts := strings.Split(host, ".")
-	if len(parts) >= 3 { // drop first label to broaden scope (foo.bar.example.com -> bar.example.com)
-		return strings.Join(parts[1:], ".")
+
+	if configDomain == "" {
+		if len(parts) >= 3 {
+			return strings.Join(parts[1:], ".")
+		}
+		return host
+	}
+	if strings.EqualFold(host, configDomain) || strings.HasSuffix(host, "."+configDomain) {
+		return configDomain
 	}
 	return host
 }
