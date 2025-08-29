@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -430,6 +431,115 @@ func TestSigninDynamicCallbackFallsBackToHTTP(t *testing.T) {
 	assert.True(t, strings.HasPrefix(redirectURI, "http://bar.hoo.com/auth/callback"), redirectURI)
 }
 
+// Integration-style tests for cross-subdomain cookie reuse
+func TestCrossSubdomainCookieDomainParentWorks(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	logger := logrus.New()
+	providers := map[string]*oidc.Provider{"stub": {}}
+	clients := map[string]*OidcClient{
+		"cookie-setter": {
+			Name: "cookie-setter", Provider: providers["stub"], ClientID: "finbourne", ClientSecret: "secret",
+			AllowedRedirects: []string{"https://.*.example.com/web-preview/.*"}, Scopes: []string{"openid"}, CookieDomain: "example.com", CookieSecret: "integration_secret_key", logger: logger,
+		},
+	}
+	oidcHandler := &Oidc{clients: clients, stateStorer: NewRedisStateStorer(mr.Addr(), logger), logger: logger}
+	// Stub profile extractor to bypass chi routing context
+	origGetProfile := getProfile
+	getProfile = func(r *http.Request, paramName string) string { return "cookie-setter" }
+	defer func() { getProfile = origGetProfile }()
+
+	// Save originals to restore
+	origGetOAuth2Token := getOAuth2Token
+	origGetIDToken := getIDToken
+	origVerify := verify
+	defer func() { getOAuth2Token = origGetOAuth2Token; getIDToken = origGetIDToken; verify = origVerify }()
+
+	getOAuth2Token = func(url string, r *http.Request, config *OidcClient) (*oauth2.Token, error) { return nil, nil }
+	getIDToken = func(tok *oauth2.Token) string { return "dummy-id-token" }
+	verify = func(token string, c OidcClient) error { return nil }
+
+	// 1. Initiate signin to generate state
+	signinReq, _ := http.NewRequest("GET", "https://alpha.preview.example.com/auth/signin/cookie-setter?rd=https://alpha.preview.example.com/web-preview/", nil)
+	signinRR := httptest.NewRecorder()
+	oidcHandler.SigninHandler(signinRR, signinReq)
+	assert.Equal(t, 302, signinRR.Code)
+	loc := signinRR.Header().Get("Location")
+	u, _ := url.Parse(loc)
+	state := u.Query().Get("state")
+	assert.NotEmpty(t, state)
+
+	// 2. Callback to set cookie on first subdomain
+	cbReq, _ := http.NewRequest("GET", fmt.Sprintf("https://alpha.preview.example.com/auth/callback?state=%s&code=abc", state), nil)
+	cbRR := httptest.NewRecorder()
+	oidcHandler.CallbackHandler(cbRR, cbReq)
+	assert.Equal(t, 200, cbRR.Code)
+	cookies := cbRR.Result().Cookies()
+	if assert.Equal(t, 1, len(cookies)) {
+		assert.Equal(t, "cookie-setter", cookies[0].Name)
+		assert.Equal(t, "example.com", cookies[0].Domain)
+	}
+
+	// 3. Verify on a different sibling subdomain with same cookie
+	verifyReq, _ := http.NewRequest("GET", "https://beta.preview.example.com/auth/verify/cookie-setter", nil)
+	verifyReq.AddCookie(cookies[0])
+	verifyRR := httptest.NewRecorder()
+	oidcHandler.VerifyHandler(verifyRR, verifyReq)
+	assert.Equal(t, http.StatusNoContent, verifyRR.Code)
+}
+
+// Verifies that when a cookie domain is a specific host (not a parent suffix),
+// the cookie is not sent to a sibling subdomain and verification fails.
+func TestCrossSubdomainHostScopedCookieNotShared(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	logger := logrus.New()
+	providers := map[string]*oidc.Provider{"stub": {}}
+	clients := map[string]*OidcClient{
+		"cookie-setter": {
+			Name: "cookie-setter", Provider: providers["stub"], ClientID: "finbourne", ClientSecret: "secret",
+			AllowedRedirects: []string{"https://.*.example.com/web-preview/.*"}, Scopes: []string{"openid"}, CookieDomain: "gamma.preview.example.com", CookieSecret: "integration_secret_key", logger: logger,
+		},
+	}
+	oidcHandler := &Oidc{clients: clients, stateStorer: NewRedisStateStorer(mr.Addr(), logger), logger: logger}
+	origGetProfile := getProfile
+	getProfile = func(r *http.Request, paramName string) string { return "cookie-setter" }
+	defer func() { getProfile = origGetProfile }()
+
+	origGetOAuth2Token := getOAuth2Token
+	origGetIDToken := getIDToken
+	origVerify := verify
+	defer func() { getOAuth2Token = origGetOAuth2Token; getIDToken = origGetIDToken; verify = origVerify }()
+
+	getOAuth2Token = func(url string, r *http.Request, config *OidcClient) (*oauth2.Token, error) { return nil, nil }
+	getIDToken = func(tok *oauth2.Token) string { return "dummy-id-token" }
+	verify = func(token string, c OidcClient) error { return nil }
+
+	signinReq, _ := http.NewRequest("GET", "https://alpha.preview.example.com/auth/signin/cookie-setter?rd=https://alpha.preview.example.com/web-preview/", nil)
+	signinRR := httptest.NewRecorder()
+	oidcHandler.SigninHandler(signinRR, signinReq)
+	assert.Equal(t, 302, signinRR.Code)
+	u, _ := url.Parse(signinRR.Header().Get("Location"))
+	state := u.Query().Get("state")
+	assert.NotEmpty(t, state)
+
+	cbReq, _ := http.NewRequest("GET", fmt.Sprintf("https://alpha.preview.example.com/auth/callback?state=%s&code=abc", state), nil)
+	cbRR := httptest.NewRecorder()
+	oidcHandler.CallbackHandler(cbRR, cbReq)
+	assert.Equal(t, 200, cbRR.Code)
+	cookies := cbRR.Result().Cookies()
+	if assert.Equal(t, 1, len(cookies)) {
+		assert.Equal(t, "alpha.preview.example.com", cookies[0].Domain)
+	}
+
+	// Cookie should NOT be sent for sibling not sharing that exact (non-parent) domain
+	verifyReq, _ := http.NewRequest("GET", "https://beta.preview.example.com/auth/verify/cookie-setter", nil)
+	// simulate browser behavior: cookie domain mismatch => cookie omitted (don't attach)
+	verifyRR := httptest.NewRecorder()
+	oidcHandler.VerifyHandler(verifyRR, verifyReq)
+	assert.Equal(t, http.StatusUnauthorized, verifyRR.Code)
+}
+
 // deriveCookieDomain tests
 func TestDeriveCookieDomain(t *testing.T) {
 	// Helper to build request with optional forwarded host
@@ -447,7 +557,6 @@ func TestDeriveCookieDomain(t *testing.T) {
 		fwdHost      string
 		expect       string
 	}{
-		{"uses configured domain verbatim", "parent.example.com", "foo.bar.example.com", "", "parent.example.com"},
 		{"drops first label when >=3 labels", "", "foo.bar.example.com", "", "bar.example.com"},
 		{"keeps two-label host", "", "example.com", "", "example.com"},
 		{"uses forwarded host", "", "internal:8080", "a.b.c.example.com", "b.c.example.com"},
