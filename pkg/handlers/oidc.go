@@ -44,7 +44,6 @@ type StateStorer interface {
 	GetRedirectURI(string) (string, string, error)
 }
 
-const cookieName = "jwt"
 const clientSideRedirectPage = `
 <html xmlns="http://www.w3.org/1999/xhtml">    
 <head>      
@@ -197,6 +196,35 @@ func (o Oidc) baseURL(r *http.Request) string {
 		host = r.Host
 	}
 	return fmt.Sprintf("%s://%s", scheme, host)
+}
+
+// deriveCookieDomain returns the domain to use for the auth cookie.
+// Rules:
+//  1. If a CookieDomain is configured, use it as-is (allows explicit control / advanced cases).
+//  2. Otherwise derive from the request host (preferring X-Forwarded-Host if present).
+//     a. Strip any port.
+//     b. If the host has 3+ labels (e.g. app.env.example.com) drop the left-most label so the
+//     cookie is valid for sibling subdomains (env.example.com). This keeps behaviour simple
+//     without needing a public suffix list. If only 1-2 labels, keep them unchanged.
+//
+// This avoids perpetual redirects when a cookie set on one subdomain is not sent to another.
+func deriveCookieDomain(configDomain string, r *http.Request) string {
+	if configDomain != "" { // Explicitly configured (could already be a parent domain)
+		return configDomain
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	} else {
+		host = strings.TrimSpace(strings.Split(host, ",")[0])
+	}
+	// Strip port if present
+	host = strings.Split(host, ":")[0]
+	parts := strings.Split(host, ".")
+	if len(parts) >= 3 { // drop first label to broaden scope (foo.bar.example.com -> bar.example.com)
+		return strings.Join(parts[1:], ".")
+	}
+	return host
 }
 
 // Handlers
@@ -362,7 +390,6 @@ func (o Oidc) SigninHandler(w http.ResponseWriter, r *http.Request) {
 
 	callbackURL := fmt.Sprintf("%s/auth/callback", o.baseURL(r))
 	http.Redirect(w, r, config.oAuth2Config(callbackURL).AuthCodeURL(state), http.StatusFound)
-	return
 }
 
 var getOAuth2Token = func(url string, r *http.Request, config *OidcClient) (*oauth2.Token, error) {
@@ -443,7 +470,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	cookie := http.Cookie{
 		Name:     config.Name,
 		Path:     "/",
-		Domain:   config.CookieDomain,
+		Domain:   deriveCookieDomain(config.CookieDomain, r),
 		Value:    encoded,
 		SameSite: 2,
 		Secure:   true,
