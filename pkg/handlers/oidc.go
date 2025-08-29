@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	oidc "github.com/coreos/go-oidc"
 	"github.com/ghodss/yaml"
@@ -33,7 +34,6 @@ type (
 	Oidc struct {
 		clients     map[string]*OidcClient
 		stateStorer StateStorer
-		externalURL string
 		logger      *logrus.Logger
 	}
 )
@@ -57,7 +57,8 @@ const clientSideRedirectPage = `
 </html>`
 
 // NewOidcHandler creates a new object for handling all oidc authorisation requests.
-func NewOidcHandler(config string, externalURL string, stateStorer StateStorer, logger *logrus.Logger) (*Oidc, error) {
+// externalURL support has been removed. Dynamic host/scheme detection is now used.
+func NewOidcHandler(config string, stateStorer StateStorer, logger *logrus.Logger) (*Oidc, error) {
 
 	var clientConfigs []struct {
 		Profile          string   `yaml:"profile"`
@@ -115,7 +116,7 @@ func NewOidcHandler(config string, externalURL string, stateStorer StateStorer, 
 	if len(clients) == 0 {
 		return nil, errors.New("No OIDC clients configured")
 	}
-	return &Oidc{clients, stateStorer, externalURL, logger}, nil
+	return &Oidc{clients, stateStorer, logger}, nil
 }
 
 // helpers
@@ -154,7 +155,6 @@ func (c OidcClient) redirectURL(r *http.Request) string {
 	}
 
 	return rd
-	// return fmt.Sprintf("%v://%v/auth/callback", r.URL.Scheme, host), fmt.Sprintf("clientid=%v,rd=%v", c.ClientID, rd)
 }
 
 func (c OidcClient) oAuth2Config(redirect string) *oauth2.Config {
@@ -169,6 +169,34 @@ func (c OidcClient) oAuth2Config(redirect string) *oauth2.Config {
 
 var getEndpoint = func(c OidcClient) oauth2.Endpoint {
 	return c.Provider.Endpoint()
+}
+
+// baseURL derives the external base URL (scheme + host) from the incoming request.
+// Order of precedence:
+// 1. X-Forwarded-Proto / X-Forwarded-Host (first values)
+// 2. r.URL.Scheme (set if the request URL had a scheme when created)
+// 3. TLS presence (https if r.TLS != nil)
+// 4. Fallback http
+func (o Oidc) baseURL(r *http.Request) string {
+	// Scheme
+	scheme := ""
+	if h := r.Header.Get("X-Forwarded-Proto"); h != "" {
+		scheme = strings.TrimSpace(strings.Split(h, ",")[0])
+	} else if r.URL != nil && r.URL.Scheme != "" {
+		scheme = r.URL.Scheme
+	} else if r.TLS != nil {
+		scheme = "https"
+	} else {
+		scheme = "http"
+	}
+	// Host
+	host := r.Header.Get("X-Forwarded-Host")
+	if host != "" {
+		host = strings.TrimSpace(strings.Split(host, ",")[0])
+	} else {
+		host = r.Host
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 // Handlers
@@ -332,7 +360,8 @@ func (o Oidc) SigninHandler(w http.ResponseWriter, r *http.Request) {
 		"stateToken":     state,
 	}).Info("Authentication required - redirecting.")
 
-	http.Redirect(w, r, config.oAuth2Config(fmt.Sprintf("%v/auth/callback", o.externalURL)).AuthCodeURL(state), http.StatusFound)
+	callbackURL := fmt.Sprintf("%s/auth/callback", o.baseURL(r))
+	http.Redirect(w, r, config.oAuth2Config(callbackURL).AuthCodeURL(state), http.StatusFound)
 	return
 }
 
@@ -379,7 +408,7 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oauth2Token, err := getOAuth2Token(o.externalURL, r, config)
+	oauth2Token, err := getOAuth2Token(o.baseURL(r), r, config)
 	if err != nil {
 		o.logger.WithFields(logrus.Fields{
 			"method":  "CallbackHandler",
@@ -413,11 +442,11 @@ func (o Oidc) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	cookie := http.Cookie{
 		Name:     config.Name,
-                Path:     "/",
-                Domain:   config.CookieDomain,
-                Value:    encoded,
-                SameSite: 2,
-				Secure:   true,
+		Path:     "/",
+		Domain:   config.CookieDomain,
+		Value:    encoded,
+		SameSite: 2,
+		Secure:   true,
 	}
 	http.SetCookie(w, &cookie)
 	o.logger.WithFields(logrus.Fields{
