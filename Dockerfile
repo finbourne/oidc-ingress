@@ -1,44 +1,46 @@
-# Build Stage
-FROM golang:1.14-alpine AS build-stage
+# syntax=docker/dockerfile:1.7
 
-LABEL app="build-oidc-ingress"
-LABEL REPO="https://github.com/finbourne/oidc-ingress"
+##############################
+# Builder Stage
+##############################
+FROM golang:1.25-alpine AS builder
 
-ENV GOROOT=/usr/local/go \
-    GOPATH=/gopath \
-    GOBIN=/gopath/bin \
-    PROJPATH=/gopath/src/github.com/finbourne/oidc-ingress
+ARG VERSION=""
+ARG GIT_COMMIT=""
 
-RUN apk add -U -q --no-progress build-base git
-RUN wget -q https://github.com/golang/dep/releases/download/v0.3.2/dep-linux-amd64 -O /usr/local/bin/dep \
-    && chmod +x /usr/local/bin/dep
+# Install build deps only if/when needed (kept minimal)
+RUN apk add --no-cache git
 
-# Because of https://github.com/docker/docker/issues/14914
-ENV PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+WORKDIR /workspace
 
-WORKDIR /gopath/src/github.com/finbourne/oidc-ingress
-ADD . /gopath/src/github.com/finbourne/oidc-ingress
+# First copy go.mod/sum to leverage layer caching
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
-RUN make get-deps && make build-alpine
+# Copy the rest of the source
+COPY . .
 
-# Final Stage (pwillie/oidc-ingress)
-FROM alpine:3.11
+# Build binary (static, trimmed)
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) \
+    go build -trimpath -ldflags "-s -w -X main.GitCommit=${GIT_COMMIT} -X main.VersionPrerelease=${VERSION}" \
+    -o /workspace/bin/oidc-ingress ./cmd/oidc-ingress
 
-ARG GIT_COMMIT
-ARG VERSION
-LABEL REPO="https://github.com/finbourne/oidc-ingress"
-LABEL GIT_COMMIT=$GIT_COMMIT
-LABEL VERSION=$VERSION
+##############################
+# Runtime Stage (distroless with CA certs)
+##############################
+FROM gcr.io/distroless/base-debian12:nonroot
 
-RUN apk add -U -q --no-progress ca-certificates
+LABEL org.opencontainers.image.source="https://github.com/finbourne/oidc-ingress" \
+      org.opencontainers.image.revision="${GIT_COMMIT}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.title="oidc-ingress" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
-COPY --from=build-stage /gopath/src/github.com/finbourne/oidc-ingress/bin/oidc-ingress /usr/bin/
+COPY --from=builder /workspace/bin/oidc-ingress /usr/bin/oidc-ingress
 
-RUN addgroup -S -g 10005 oidc-ingress && \
-    adduser -S -u 10005 -G oidc-ingress oidc-ingress
-RUN chown -R oidc-ingress /usr/bin/oidc-ingress
-RUN chgrp -R oidc-ingress /usr/bin/oidc-ingress
-RUN chmod -R 774 /usr/bin/oidc-ingress
-USER oidc-ingress
+USER nonroot
 
-ENTRYPOINT [ "/usr/bin/oidc-ingress" ] 
+EXPOSE 8000 9000
+ENTRYPOINT ["/usr/bin/oidc-ingress"]

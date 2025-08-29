@@ -28,7 +28,6 @@ type Options struct {
 	InternalAddress    string
 	StateStorage       string
 	StateRemoteAddress string
-	ExternalURL        string
 	VersionFlag        bool
 	Debug              bool
 }
@@ -42,7 +41,6 @@ func init() {
 	flag.StringVar(&options.ListenAddress, "listen", ":8000", "Listen address")
 	flag.StringVar(&options.InternalAddress, "internal", ":9000", "Internal listen address")
 	flag.StringVar(&options.StateRemoteAddress, "redis", "", "The address of the storage cluster.")
-	flag.StringVar(&options.ExternalURL, "externalUrl", "", "The url that the auth service is being served on.")
 	flag.BoolVar(&options.VersionFlag, "version", false, "Version")
 	flag.BoolVar(&options.Debug, "debug", false, "Turn on debug logging.")
 }
@@ -83,7 +81,7 @@ func StartServer(logger *logrus.Logger, options Options) {
 	r := handlers.NewRouter(logger)
 
 	stateStorer := handlers.NewRedisStateStorer(strings.TrimSpace(options.StateRemoteAddress), logger)
-	oidc, err := handlers.NewOidcHandler(options.ClientConfigs, strings.TrimSpace(options.ExternalURL), stateStorer, logger)
+	oidc, err := handlers.NewOidcHandler(options.ClientConfigs, stateStorer, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("Failed to initialise OIDC handler")
 	}

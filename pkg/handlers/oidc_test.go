@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ func getOidc(returnParam string, sa string) *Oidc {
 		CookieSecret:     "big_super_secret_key",
 		logger:           logger,
 	}
-	return &Oidc{clients, stateStorer, "https://localhost", logger}
+	return &Oidc{clients, stateStorer, logger}
 }
 func TestVerifyExpiredTokenReturns401(t *testing.T) {
 
@@ -179,7 +180,7 @@ func TestSigninWithValidToken(t *testing.T) {
   cookieDomain: boo.hoo.com
   cookieSecret: big_super_secret_key
 `
-	oidc, _ := NewOidcHandler(config, "localhost", NewRedisStateStorer(mr.Addr(), logger), logger)
+	oidc, _ := NewOidcHandler(config, NewRedisStateStorer(mr.Addr(), logger), logger)
 
 	req, _ := http.NewRequest("GET", "https://boo.hoo.com/auth/signin/test?rd=https://boo.hoo.com", nil)
 	req.AddCookie(&http.Cookie{Name: "test", Value: getValidCookieValue()})
@@ -360,4 +361,71 @@ func TestCallbackOKRedirects(t *testing.T) {
 	assert.Equal(t, 1, len(resp.Cookies()))
 	assert.Equal(t, rr.Body.String(), "\n<html xmlns=\"http://www.w3.org/1999/xhtml\">    \n<head>      \n<title>Redirecting</title>      \n<meta http-equiv=\"refresh\" content=\"0;URL='https://horton.hoo.com'\" />    \n</head>    \n<body> \n<p>Redirecting...</p> \n</body>  \n</html>")
 
+}
+
+// New dynamic base URL tests
+func TestSigninDynamicCallbackUsesRequestHost(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	o := getOidc("test", mr.Addr())
+	// Ensure predictable auth endpoint so Location is a full URL
+	getEndpoint = func(c OidcClient) oauth2.Endpoint {
+		return oauth2.Endpoint{AuthURL: "https://authserver/authorize"}
+	}
+	// rd must match allowed redirect regex
+	req, _ := http.NewRequest("GET", "https://foo.hoo.com/auth/signin/test?rd=https://foo.hoo.com", nil)
+	rr := httptest.NewRecorder()
+	o.SigninHandler(rr, req)
+	resp := rr.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, 302, resp.StatusCode)
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	assert.NoError(t, err)
+	redirectURI, _ := url.QueryUnescape(u.Query().Get("redirect_uri"))
+	assert.True(t, strings.HasPrefix(redirectURI, "https://foo.hoo.com/auth/callback"), redirectURI)
+}
+
+func TestSigninDynamicCallbackUsesForwardedHeaders(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	o := getOidc("test", mr.Addr())
+	getEndpoint = func(c OidcClient) oauth2.Endpoint {
+		return oauth2.Endpoint{AuthURL: "https://authserver/authorize"}
+	}
+	req, _ := http.NewRequest("GET", "http://internal/auth/signin/test?rd=https://alice.hoo.com", nil)
+	// Simulate proxy headers differing from Host
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "alice.hoo.com")
+	rr := httptest.NewRecorder()
+	o.SigninHandler(rr, req)
+	resp := rr.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, 302, resp.StatusCode)
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	assert.NoError(t, err)
+	redirectURI, _ := url.QueryUnescape(u.Query().Get("redirect_uri"))
+	assert.True(t, strings.HasPrefix(redirectURI, "https://alice.hoo.com/auth/callback"), redirectURI)
+}
+
+func TestSigninDynamicCallbackFallsBackToHTTP(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	o := getOidc("test", mr.Addr())
+	getEndpoint = func(c OidcClient) oauth2.Endpoint {
+		return oauth2.Endpoint{AuthURL: "https://authserver/authorize"}
+	}
+	req, _ := http.NewRequest("GET", "http://bar.hoo.com/auth/signin/test?rd=https://bar.hoo.com", nil)
+	rr := httptest.NewRecorder()
+	o.SigninHandler(rr, req)
+	resp := rr.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, 302, resp.StatusCode)
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	assert.NoError(t, err)
+	redirectURI, _ := url.QueryUnescape(u.Query().Get("redirect_uri"))
+	// Since scheme is http and no forwarded headers/TLS, expect http callback
+	assert.True(t, strings.HasPrefix(redirectURI, "http://bar.hoo.com/auth/callback"), redirectURI)
 }
