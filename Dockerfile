@@ -28,9 +28,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     -o /workspace/bin/oidc-ingress ./cmd/oidc-ingress
 
 ##############################
-# Runtime Stage (distroless with CA certs)
+# Runtime Stage (scratch with CA certs and users)
 ##############################
-FROM gcr.io/distroless/base-debian12:nonroot
+FROM scratch as final
 
 LABEL org.opencontainers.image.source="https://github.com/finbourne/oidc-ingress" \
       org.opencontainers.image.revision="${GIT_COMMIT}" \
@@ -38,6 +38,11 @@ LABEL org.opencontainers.image.source="https://github.com/finbourne/oidc-ingress
       org.opencontainers.image.title="oidc-ingress" \
       org.opencontainers.image.licenses="Apache-2.0"
 
+#This is a scratch image (is completely empty) so we need to copy the ca secrets to be able to handle ssl connections:
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Copy /etc/passwd so we can get our low priv user
+COPY --from=builder /etc/passwd /etc/passwd
+#Copy binary and config:
 COPY --from=builder /workspace/bin/oidc-ingress /usr/bin/oidc-ingress
 
 USER nonroot

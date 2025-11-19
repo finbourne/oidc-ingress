@@ -55,7 +55,7 @@ func TestWrite(t *testing.T) {
 
 	entry := &StructuredLoggerEntry{Logger: logrus.NewEntry(logger)}
 
-	entry.Write(200, 0, 2*time.Second)
+	entry.Write(200, 0, nil, 2*time.Second, nil)
 	s, _ := hook.Entry.String()
 	assert.Equal(t, s, "{\"level\":\"info\",\"msg\":\"request complete\",\"resp_bytes_length\":0,\"resp_elapsed_ms\":2000,\"resp_status\":200}\n")
 	assert.Equal(t, hook.Fired, true)
