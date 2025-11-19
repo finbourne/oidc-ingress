@@ -61,7 +61,7 @@ type StructuredLoggerEntry struct {
 }
 
 // Write outputs the response data from the request.
-func (l *StructuredLoggerEntry) Write(status, bytes int, elapsed time.Duration) {
+func (l *StructuredLoggerEntry) Write(status, bytes int, header http.Header, elapsed time.Duration, extra interface{}) {
 	l.Logger = l.Logger.WithFields(logrus.Fields{
 		"resp_status": status, "resp_bytes_length": bytes,
 		"resp_elapsed_ms": float64(elapsed.Nanoseconds()) / 1000000.0,
@@ -70,7 +70,7 @@ func (l *StructuredLoggerEntry) Write(status, bytes int, elapsed time.Duration) 
 	l.Logger.Infoln("request complete")
 }
 
-// Panic does what it sais on the tin.
+// Panic does what it says on the tin.
 func (l *StructuredLoggerEntry) Panic(v interface{}, stack []byte) {
 	l.Logger = l.Logger.WithFields(logrus.Fields{
 		"stack": string(stack),
