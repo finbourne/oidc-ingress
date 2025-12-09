@@ -18,7 +18,7 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/oauth2 v0.33.0
+	golang.org/x/oauth2 v0.34.0
 )
 
 require (
