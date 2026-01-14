@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/alicebob/miniredis/v2 v2.13.3
-	github.com/coreos/go-oidc v2.4.0+incompatible
+	github.com/coreos/go-oidc v2.5.0+incompatible
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-chi/chi v4.1.2+incompatible
