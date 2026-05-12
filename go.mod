@@ -3,7 +3,7 @@ module github.com/finbourne/oidc-ingress
 go 1.25
 
 require (
-	github.com/alicebob/miniredis/v2 v2.13.3
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coreos/go-oidc v2.4.0+incompatible
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/ghodss/yaml v1.0.0
@@ -23,7 +23,6 @@ require (
 
 require (
 	github.com/ajg/form v1.5.1 // indirect
-	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -33,7 +32,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.3 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
-	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	golang.org/x/crypto v0.44.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
