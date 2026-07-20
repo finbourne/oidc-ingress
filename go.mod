@@ -1,6 +1,6 @@
 module github.com/finbourne/oidc-ingress
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.13.3
@@ -14,11 +14,11 @@ require (
 	github.com/gorilla/securecookie v1.1.2
 	github.com/namsral/flag v1.7.4-pre
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.24.0
 	github.com/rs/xid v1.6.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/oauth2 v0.33.0
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -31,14 +31,12 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.3 // indirect
-	github.com/prometheus/procfs v0.19.2 // indirect
+	github.com/prometheus/common v0.70.0 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20191220021717-ab39c6098bdb // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/crypto v0.44.0 // indirect
-	golang.org/x/net v0.47.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
